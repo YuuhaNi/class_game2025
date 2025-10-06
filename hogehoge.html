@@ -1,1 +1,357 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>キラキラ・パーティクルで遊ぶ</title>
+  <style>
+    :root{
+      --panel-bg: rgba(20,20,28,.5);
+      --panel-bd: rgba(255,255,255,.15);
+      --text: #e9ecf1;
+      --accent: #76c7ff;
+    }
+    html,body{height:100%;}
+    body{
+      margin:0; overflow:hidden; background:#0b0f16; color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+    }
+    canvas{position:fixed; inset:0; display:block;}
+
+    /* Control Panel */
+    .panel{
+      position: fixed; top: 12px; left: 12px; z-index:10; padding:14px 14px 10px; width: min(360px, calc(100vw - 24px));
+      background: var(--panel-bg); border: 1px solid var(--panel-bd); border-radius: 16px; backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    .panel header{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+    .dot{width:10px;height:10px;border-radius:9999px;background:radial-gradient(circle at 30% 30%, #fff, #9cf 40%, #59f 70%, #17f0 100%);}    
+    .title{font-weight:700; letter-spacing:.02em}
+    .row{display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; margin:8px 0;}
+    .row.full{grid-template-columns: 1fr;}
+    label{font-size:.85rem; opacity:.9}
+    input[type="range"]{ width: 180px; }
+    input[type="color"], select{ background: transparent; color: var(--text); border:1px solid var(--panel-bd); border-radius:8px; padding:6px; }
+    input[type="checkbox"]{ transform: translateY(1px);}
+    .btns{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
+    button{ cursor:pointer; border:1px solid var(--panel-bd); background:rgba(255,255,255,.06); color:var(--text); padding:8px 10px; border-radius:12px; font-weight:600; }
+    button:hover{ background:rgba(255,255,255,.12); }
+    .hint{font-size:.78rem; opacity:.75; margin-top:6px}
+    .badge{font-size:.7rem; opacity:.7; border:1px solid var(--panel-bd); padding:2px 6px; border-radius:9999px}
+
+    /* Mobile helpers */
+    @media (max-width: 520px){
+      .row{grid-template-columns: 1fr;}
+      input[type="range"]{ width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div class="panel" role="group" aria-label="controls">
+    <header>
+      <div class="dot" aria-hidden="true"></div>
+      <div class="title">キラキラ・パーティクル <span class="badge">v1.0</span></div>
+    </header>
+
+    <div class="row"><label>粒の数 <span id="countLabel"></span></label><input id="count" type="range" min="50" max="4000" value="900" step="10"/></div>
+    <div class="row"><label>サイズ</label><input id="size" type="range" min="0.5" max="6" value="2.5" step="0.1"/></div>
+    <div class="row"><label>速度</label><input id="speed" type="range" min="0.1" max="6" value="2.4" step="0.1"/></div>
+    <div class="row"><label>重力</label><input id="gravity" type="range" min="-0.2" max="0.6" value="0.02" step="0.01"/></div>
+    <div class="row"><label>残像（トレイル）</label><input id="trail" type="range" min="0" max="0.2" value="0.08" step="0.005"/></div>
+
+    <div class="row"><label>色モード</label>
+      <select id="colorMode">
+        <option value="rainbow">レインボー</option>
+        <option value="mono">単色</option>
+        <option value="heat">ヒート</option>
+        <option value="icy">アイス</option>
+      </select>
+    </div>
+    <div class="row"><label>単色カラー</label><input id="colorPick" type="color" value="#7ac6ff"/></div>
+
+    <div class="row"><label>ブレンド</label>
+      <select id="blend">
+        <option value="lighter">加算（キラキラ）</option>
+        <option value="screen">スクリーン</option>
+        <option value="normal">ノーマル</option>
+      </select>
+    </div>
+    <div class="row"><label>形</label>
+      <select id="shape">
+        <option value="circle">円</option>
+        <option value="star">星</option>
+        <option value="triangle">三角</option>
+      </select>
+    </div>
+
+    <div class="row"><label>マウスに惹かれる</label><input id="attract" type="checkbox" checked /></div>
+    <div class="row"><label>きらめき（点滅）</label><input id="sparkle" type="checkbox" checked /></div>
+    <div class="row"><label>自動バースト</label><input id="autoburst" type="checkbox" /></div>
+
+    <div class="btns">
+      <button id="burst">バースト</button>
+      <button id="randomize">ランダム</button>
+      <button id="pause">一時停止</button>
+      <button id="save">画像として保存</button>
+      <button id="clear">画面クリア</button>
+    </div>
+    <div class="hint">クリック / タップで花火、ドラッグで軌跡。DPI対応・フルスクリーン・オフライン動作。</div>
+  </div>
+
+  <script>
+  (()=>{
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+
+    const DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    let w = 0, h = 0;
+
+    function resize(){
+      const { innerWidth, innerHeight } = window;
+      w = Math.floor(innerWidth * DPR);
+      h = Math.floor(innerHeight * DPR);
+      canvas.width = w; canvas.height = h;
+      canvas.style.width = innerWidth + 'px';
+      canvas.style.height = innerHeight + 'px';
+      fadeScreen(1);
+    }
+    window.addEventListener('resize', resize, {passive:true});
+    resize();
+
+    // Controls
+    const ui = {
+      count: document.getElementById('count'),
+      countLabel: document.getElementById('countLabel'),
+      size: document.getElementById('size'),
+      speed: document.getElementById('speed'),
+      gravity: document.getElementById('gravity'),
+      trail: document.getElementById('trail'),
+      colorMode: document.getElementById('colorMode'),
+      colorPick: document.getElementById('colorPick'),
+      shape: document.getElementById('shape'),
+      blend: document.getElementById('blend'),
+      attract: document.getElementById('attract'),
+      sparkle: document.getElementById('sparkle'),
+      autoburst: document.getElementById('autoburst'),
+      burst: document.getElementById('burst'),
+      randomize: document.getElementById('randomize'),
+      pause: document.getElementById('pause'),
+      save: document.getElementById('save'),
+      clear: document.getElementById('clear'),
+    };
+
+    function updateCountLabel(){
+      ui.countLabel.textContent = `${ui.count.value}`;
+    }
+    ui.count.addEventListener('input', updateCountLabel);
+    updateCountLabel();
+
+    // Particle system
+    const MAX_INIT = 4000;
+    const particles = [];
+
+    const state = {
+      paused: false,
+      hueBase: 200,
+      t: 0,
+      mouse: {x: w/2, y: h/2, down: false},
+      lastBurst: 0,
+    };
+
+    function rand(a=0, b=1){return a + Math.random()*(b-a)}
+    function fadeScreen(alpha){
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(11,15,22,${alpha})`;
+      ctx.fillRect(0,0,w,h);
+      ctx.restore();
+    }
+
+    class Particle{
+      constructor(x, y){
+        const spd = +ui.speed.value * DPR;
+        const ang = rand(0, Math.PI*2);
+        const v = rand(.2, 1) * spd;
+        this.x = x; this.y = y;
+        this.vx = Math.cos(ang)*v; this.vy = Math.sin(ang)*v;
+        this.life = rand(0.9, 1.4) * 2200; // ms
+        this.birth = performance.now();
+        this.size = rand(.6, 1.4) * +ui.size.value * DPR;
+        this.hue = (state.hueBase + rand(-40, 40) + 360) % 360;
+        this.alpha = 1;
+        this.spin = rand(-2,2);
+      }
+      update(dt){
+        this.vy += +ui.gravity.value * DPR * dt * 0.06;
+        const friction = 0.999;
+        this.vx *= friction; this.vy *= friction;
+        this.x += this.vx * dt * 0.06;
+        this.y += this.vy * dt * 0.06;
+
+        // mouse attract
+        if(ui.attract.checked){
+          const dx = state.mouse.x - this.x; const dy = state.mouse.y - this.y;
+          const d2 = dx*dx + dy*dy;
+          const f = Math.min(0.00003 * d2, 0.09);
+          this.vx += dx * f * 0.0003 * dt;
+          this.vy += dy * f * 0.0003 * dt;
+        }
+
+        const age = performance.now() - this.birth;
+        const lifeRatio = Math.max(0, 1 - age / this.life);
+        this.alpha = Math.pow(lifeRatio, 1.8);
+        if(ui.sparkle.checked){
+          this.alpha *= (0.8 + 0.2*Math.sin(age*0.02 + this.hue));
+        }
+        return lifeRatio > 0 && this.x>-50 && this.x<w+50 && this.y>-50 && this.y<h+50;
+      }
+      color(){
+        const m = ui.colorMode.value;
+        if(m==='mono') return hex2rgba(ui.colorPick.value, this.alpha);
+        if(m==='heat') return `hsla(${Math.max(0, Math.min(60, this.hue-140))}, 100%, 55%, ${this.alpha})`;
+        if(m==='icy') return `hsla(${210 + (this.hue%40)}, 100%, 70%, ${this.alpha})`;
+        return `hsla(${this.hue}, 100%, 65%, ${this.alpha})`;
+      }
+      draw(){
+        ctx.save();
+        ctx.fillStyle = this.color();
+        const s = this.size;
+        const x = this.x, y = this.y;
+        const shape = ui.shape.value;
+        if(shape==='circle'){
+          ctx.beginPath(); ctx.arc(x,y,s,0,Math.PI*2); ctx.fill();
+        } else if(shape==='triangle'){
+          ctx.beginPath();
+          const a = Math.atan2(this.vy, this.vx) + Math.PI/2;
+          const r = s*1.6;
+          for(let i=0;i<3;i++){
+            const th = a + i*2*Math.PI/3;
+            const px = x + Math.cos(th)*r;
+            const py = y + Math.sin(th)*r;
+            if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+          }
+          ctx.closePath(); ctx.fill();
+        } else if(shape==='star'){
+          const spikes=5; const outer=s*2.0; const inner=s*0.9;
+          let rot = Math.atan2(this.vy,this.vx);
+          ctx.beginPath();
+          for(let i=0;i<spikes*2;i++){
+            const r = (i%2===0)?outer:inner;
+            const th = rot + (i*Math.PI/spikes);
+            const px = x + Math.cos(th)*r; const py = y + Math.sin(th)*r;
+            if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+          }
+          ctx.closePath(); ctx.fill();
+        }
+        // soft glow
+        const g = ctx.createRadialGradient(x,y,0,x,y,s*3);
+        g.addColorStop(0, this.color());
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(x,y,s*3,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function hex2rgba(hex, a=1){
+      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      if(!m) return `rgba(255,255,255,${a})`;
+      const r=parseInt(m[1],16), g=parseInt(m[2],16), b=parseInt(m[3],16);
+      return `rgba(${r},${g},${b},${a})`;
+    }
+
+    function burst(x, y, n){
+      const add = Math.min(n, MAX_INIT);
+      for(let i=0; i<add; i++) particles.push(new Particle(x,y));
+      // keep count in check
+      const target = +ui.count.value;
+      if(particles.length > target){ particles.splice(0, particles.length - target); }
+    }
+
+    // interactions
+    const pt = (e)=>{
+      if(e.touches && e.touches[0]) return {x: e.touches[0].clientX*DPR, y: e.touches[0].clientY*DPR};
+      return {x: e.clientX*DPR, y: e.clientY*DPR};
+    }
+    canvas.addEventListener('pointerdown', (e)=>{
+      state.mouse.down = true; const p = pt(e); state.mouse.x=p.x; state.mouse.y=p.y; burst(p.x,p.y, +ui.count.value/2);
+    });
+    canvas.addEventListener('pointermove', (e)=>{
+      const p = pt(e); state.mouse.x=p.x; state.mouse.y=p.y; if(state.mouse.down) burst(p.x,p.y, 30);
+    });
+    window.addEventListener('pointerup', ()=>{ state.mouse.down = false; });
+
+    // buttons
+    ui.burst.addEventListener('click', ()=> burst(rand(0,w), rand(0,h), +ui.count.value));
+    ui.randomize.addEventListener('click', ()=>{
+      ui.count.value = Math.floor(rand(300, 1800)); updateCountLabel();
+      ui.size.value = rand(1,5).toFixed(1);
+      ui.speed.value = rand(0.8,4.5).toFixed(1);
+      ui.gravity.value = rand(-0.05,0.25).toFixed(2);
+      ui.trail.value = rand(0.02,0.12).toFixed(3);
+      const modes=['rainbow','mono','heat','icy']; ui.colorMode.value = modes[Math.floor(rand(0,modes.length))];
+      ui.shape.value = ['circle','star','triangle'][Math.floor(rand(0,3))];
+      ui.blend.value = ['lighter','screen','normal'][Math.floor(rand(0,3))];
+      ui.sparkle.checked = Math.random()>0.3; ui.attract.checked = Math.random()>0.25;
+      ui.colorPick.value = `#${Math.floor(rand(0,0xFFFFFF)).toString(16).padStart(6,'0')}`;
+    });
+    ui.pause.addEventListener('click', ()=>{ state.paused = !state.paused; ui.pause.textContent = state.paused ? '再開' : '一時停止';});
+    ui.clear.addEventListener('click', ()=> fadeScreen(1));
+    ui.save.addEventListener('click', ()=>{
+      const url = canvas.toDataURL('image/png');
+      const a = document.createElement('a'); a.href=url; a.download = `sparkles_${Date.now()}.png`; a.click();
+    });
+
+    // main loop
+    let last = performance.now();
+    function tick(now){
+      const dt = Math.min(50, now - last); last = now; state.t += dt;
+
+      // background trail fade
+      const trail = +ui.trail.value;
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(11,15,22,${trail})`;
+      ctx.fillRect(0,0,w,h);
+      ctx.restore();
+
+      ctx.globalCompositeOperation = ui.blend.value;
+
+      // maintain target count
+      const target = +ui.count.value;
+      if(particles.length < target){
+        const cx = rand(0,w), cy = rand(0,h);
+        for(let i=0;i<Math.min(30, target - particles.length); i++) particles.push(new Particle(cx, cy));
+      }
+
+      // auto burst
+      if(ui.autoburst.checked && now - state.lastBurst > 800){
+        state.lastBurst = now;
+        burst(rand(w*0.2,w*0.8), rand(h*0.2,h*0.8), Math.floor(rand(20, 80)));
+      }
+
+      // update & draw
+      for(let i=particles.length-1; i>=0; i--){
+        const p = particles[i];
+        if(!state.paused && p.update(dt)){
+          p.draw();
+        }else if(!state.paused){
+          particles.splice(i,1);
+        }
+      }
+
+      // hue drift for rainbow
+      state.hueBase = (state.hueBase + 0.05*dt) % 360;
+      requestAnimationFrame(tick);
+    }
+
+    // seed
+    for(let i=0;i<600;i++) particles.push(new Particle(rand(0,w), rand(0,h)));
+    fadeScreen(1);
+    requestAnimationFrame(tick);
+  })();
+  </script>
+</body>
+</html>
 
