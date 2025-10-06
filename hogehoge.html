@@ -3,355 +3,289 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>キラキラ・パーティクルで遊ぶ</title>
+  <title>SHOCK REFLEX — 目覚まし反射ゲーム</title>
   <style>
     :root{
-      --panel-bg: rgba(20,20,28,.5);
-      --panel-bd: rgba(255,255,255,.15);
-      --text: #e9ecf1;
-      --accent: #76c7ff;
+      --bg:#0a0a0f; --fg:#e6e6f0; --accent1:#00f5d4; --accent2:#f15bb5; --accent3:#fee440; --accent4:#00bbf9;
+      --shakeX:0px; --shakeY:0px; --glow:0 0 30px rgba(255,255,255,.15);
     }
-    html,body{height:100%;}
-    body{
-      margin:0; overflow:hidden; background:#0b0f16; color:var(--text);
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
-    }
-    canvas{position:fixed; inset:0; display:block;}
+    html,body{height:100%; margin:0; background:var(--bg); color:var(--fg); font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans JP",sans-serif; overflow:hidden}
+    .wrap{position:relative; height:100%; display:grid; grid-template-rows:auto 1fr auto;}
+    header, footer{padding:10px 14px; opacity:.85}
+    header{display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.08em}
+    .badge{font-size:12px; padding:4px 8px; border:1px solid #fff2; border-radius:999px; opacity:.8}
+    .stage{position:relative; overflow:hidden;}
+    canvas{position:absolute; inset:0; width:100%; height:100%;}
+    .ui{position:absolute; inset:0; display:grid; place-items:center; pointer-events:none}
+    .panel{pointer-events:auto; text-align:center; max-width:min(720px,92vw); padding:24px; border-radius:16px; backdrop-filter: blur(6px) saturate(1.2); background:radial-gradient(120% 120% at 50% 30%, #ffffff10, #00000040); box-shadow:var(--glow)}
+    .title{font-size: clamp(28px,6vw,48px); font-weight:900; letter-spacing:.06em; line-height:1.1; margin:0 0 4px}
+    .subtitle{font-size: clamp(14px,2.6vw,18px); opacity:.82; margin:4px 0 20px}
+    .big{font-size: clamp(36px,10vw,120px); font-weight:900; letter-spacing:.06em; line-height:1; margin:0}
+    .big .unit{font-size: .35em; opacity:.8}
+    .controls{display:flex; flex-wrap:wrap; gap:10px; justify-content:center}
+    button{all:unset; cursor:pointer; padding:12px 18px; border-radius:12px; border:1px solid #ffffff22; background:linear-gradient(180deg,#ffffff20,#00000020); box-shadow: 0 6px 20px #0006; font-weight:800; letter-spacing:.06em}
+    button:hover{transform: translateY(-1px)}
+    .primary{background:linear-gradient(120deg,var(--accent1),var(--accent4)); color:#001314}
+    .danger{background:linear-gradient(120deg,#ff5449,#ffb800); color:#1a0b00}
+    .meter{height:10px; width:100%; background:#ffffff14; border-radius:999px; overflow:hidden; margin-top:14px}
+    .meter > div{height:100%; width:0%; background:linear-gradient(90deg,var(--accent2),var(--accent3)); transition:width .2s ease}
+    .row{display:flex; gap:14px; justify-content:center; flex-wrap:wrap; align-items:center}
+    .stat{display:grid; gap:4px; min-width:120px}
+    .stat .label{opacity:.7; font-size:12px; letter-spacing:.08em}
+    .stat .val{font-weight:900; font-size:20px}
+    .flash{position:absolute; inset:-20px; background: #fff; opacity:0; pointer-events:none}
 
-    /* Control Panel */
-    .panel{
-      position: fixed; top: 12px; left: 12px; z-index:10; padding:14px 14px 10px; width: min(360px, calc(100vw - 24px));
-      background: var(--panel-bg); border: 1px solid var(--panel-bd); border-radius: 16px; backdrop-filter: blur(10px);
-      box-shadow: 0 10px 30px rgba(0,0,0,.35);
-    }
-    .panel header{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
-    .dot{width:10px;height:10px;border-radius:9999px;background:radial-gradient(circle at 30% 30%, #fff, #9cf 40%, #59f 70%, #17f0 100%);}    
-    .title{font-weight:700; letter-spacing:.02em}
-    .row{display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; margin:8px 0;}
-    .row.full{grid-template-columns: 1fr;}
-    label{font-size:.85rem; opacity:.9}
-    input[type="range"]{ width: 180px; }
-    input[type="color"], select{ background: transparent; color: var(--text); border:1px solid var(--panel-bd); border-radius:8px; padding:6px; }
-    input[type="checkbox"]{ transform: translateY(1px);}
-    .btns{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
-    button{ cursor:pointer; border:1px solid var(--panel-bd); background:rgba(255,255,255,.06); color:var(--text); padding:8px 10px; border-radius:12px; font-weight:600; }
-    button:hover{ background:rgba(255,255,255,.12); }
-    .hint{font-size:.78rem; opacity:.75; margin-top:6px}
-    .badge{font-size:.7rem; opacity:.7; border:1px solid var(--panel-bd); padding:2px 6px; border-radius:9999px}
+    /* Vibrations & glitches via transform */
+    .shake{transform: translate(var(--shakeX), var(--shakeY));}
 
-    /* Mobile helpers */
-    @media (max-width: 520px){
-      .row{grid-template-columns: 1fr;}
-      input[type="range"]{ width: 100%; }
-    }
+    /* Neon gradient background */
+    .bgfx{position:absolute; inset:-20%; background:
+      radial-gradient(60% 40% at 20% 20%, #00f5d422 0%, transparent 70%),
+      radial-gradient(50% 35% at 80% 20%, #f15bb522 0%, transparent 70%),
+      radial-gradient(70% 50% at 50% 90%, #00bbf922 0%, transparent 70%);
+      filter: blur(30px) contrast(1.2); animation: float 18s ease-in-out infinite alternate}
+    @keyframes float { from{transform: translateY(-2%) scale(1)} to{transform: translateY(3%) scale(1.04)} }
+
+    /* Accessibility tip */
+    .warn{font-size:12px; opacity:.65}
   </style>
 </head>
 <body>
-  <canvas id="c"></canvas>
-  <div class="panel" role="group" aria-label="controls">
+  <div class="wrap">
     <header>
-      <div class="dot" aria-hidden="true"></div>
-      <div class="title">キラキラ・パーティクル <span class="badge">v1.0</span></div>
+      <div class="badge">⚡ SHOCK REFLEX</div>
+      <div class="badge">SPACE / TAP で操作</div>
+      <div class="badge" id="bestBadge">BEST: -- ms</div>
     </header>
 
-    <div class="row"><label>粒の数 <span id="countLabel"></span></label><input id="count" type="range" min="50" max="4000" value="900" step="10"/></div>
-    <div class="row"><label>サイズ</label><input id="size" type="range" min="0.5" max="6" value="2.5" step="0.1"/></div>
-    <div class="row"><label>速度</label><input id="speed" type="range" min="0.1" max="6" value="2.4" step="0.1"/></div>
-    <div class="row"><label>重力</label><input id="gravity" type="range" min="-0.2" max="0.6" value="0.02" step="0.01"/></div>
-    <div class="row"><label>残像（トレイル）</label><input id="trail" type="range" min="0" max="0.2" value="0.08" step="0.005"/></div>
-
-    <div class="row"><label>色モード</label>
-      <select id="colorMode">
-        <option value="rainbow">レインボー</option>
-        <option value="mono">単色</option>
-        <option value="heat">ヒート</option>
-        <option value="icy">アイス</option>
-      </select>
-    </div>
-    <div class="row"><label>単色カラー</label><input id="colorPick" type="color" value="#7ac6ff"/></div>
-
-    <div class="row"><label>ブレンド</label>
-      <select id="blend">
-        <option value="lighter">加算（キラキラ）</option>
-        <option value="screen">スクリーン</option>
-        <option value="normal">ノーマル</option>
-      </select>
-    </div>
-    <div class="row"><label>形</label>
-      <select id="shape">
-        <option value="circle">円</option>
-        <option value="star">星</option>
-        <option value="triangle">三角</option>
-      </select>
+    <div class="stage shake" id="stage">
+      <div class="bgfx"></div>
+      <canvas id="fx"></canvas>
+      <div class="flash" id="flash"></div>
+      <div class="ui">
+        <div class="panel" id="panel">
+          <h1 class="title">目の覚めるような一撃の瞬間を狙え。</h1>
+          <p class="subtitle">合図が出たら <strong>できるだけ早く</strong> 反応！早すぎは<strong>フライング</strong>です。</p>
+          <div class="controls">
+            <button class="primary" id="startBtn">ゲーム開始 (SPACE)</button>
+            <button id="practiceBtn">練習モード</button>
+          </div>
+          <div class="meter" aria-hidden>
+            <div id="meterBar"></div>
+          </div>
+          <div class="row" style="margin-top:14px">
+            <div class="stat"><div class="label">ラウンド</div><div class="val" id="round">0 / 5</div></div>
+            <div class="stat"><div class="label">スコア</div><div class="val" id="score">0</div></div>
+            <div class="stat"><div class="label">最速</div><div class="val" id="fastest">-- ms</div></div>
+          </div>
+          <p class="warn">※ 激しい画面揺れとフラッシュ効果があります。体調に不安のある方はプレイを控えてください（強い点滅は避けています）。</p>
+        </div>
+      </div>
     </div>
 
-    <div class="row"><label>マウスに惹かれる</label><input id="attract" type="checkbox" checked /></div>
-    <div class="row"><label>きらめき（点滅）</label><input id="sparkle" type="checkbox" checked /></div>
-    <div class="row"><label>自動バースト</label><input id="autoburst" type="checkbox" /></div>
-
-    <div class="btns">
-      <button id="burst">バースト</button>
-      <button id="randomize">ランダム</button>
-      <button id="pause">一時停止</button>
-      <button id="save">画像として保存</button>
-      <button id="clear">画面クリア</button>
-    </div>
-    <div class="hint">クリック / タップで花火、ドラッグで軌跡。DPI対応・フルスクリーン・オフライン動作。</div>
+    <footer>
+      <small>© 2025 Shock Reflex — シングルHTML版</small>
+    </footer>
   </div>
 
-  <script>
-  (()=>{
-    const canvas = document.getElementById('c');
-    const ctx = canvas.getContext('2d');
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const panel = document.getElementById('panel');
+  const startBtn = document.getElementById('startBtn');
+  const practiceBtn = document.getElementById('practiceBtn');
+  const meterBar = document.getElementById('meterBar');
+  const scoreEl = document.getElementById('score');
+  const roundEl = document.getElementById('round');
+  const fastestEl = document.getElementById('fastest');
+  const bestBadge = document.getElementById('bestBadge');
+  const flash = document.getElementById('flash');
 
-    const DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
-    let w = 0, h = 0;
+  // Canvas particle FX
+  const cvs = document.getElementById('fx');
+  const ctx = cvs.getContext('2d');
+  const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const particles = [];
 
-    function resize(){
-      const { innerWidth, innerHeight } = window;
-      w = Math.floor(innerWidth * DPR);
-      h = Math.floor(innerHeight * DPR);
-      canvas.width = w; canvas.height = h;
-      canvas.style.width = innerWidth + 'px';
-      canvas.style.height = innerHeight + 'px';
-      fadeScreen(1);
+  function resize(){
+    const {clientWidth:w, clientHeight:h} = stage;
+    cvs.width = Math.floor(w * DPR);
+    cvs.height = Math.floor(h * DPR);
+    cvs.style.width = w + 'px';
+    cvs.style.height = h + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  addEventListener('resize', resize); resize();
+
+  function spawnShockwave(x,y, power=1){
+    for(let i=0;i<180;i++){
+      const a = (i/180)*Math.PI*2;
+      const s = (Math.random()*2+1) * power;
+      particles.push({x,y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 60+Math.random()*30, size: 2+Math.random()*2, hue: (a*180/Math.PI + (Math.random()*40-20))%360, alpha:1});
     }
-    window.addEventListener('resize', resize, {passive:true});
-    resize();
+  }
 
-    // Controls
-    const ui = {
-      count: document.getElementById('count'),
-      countLabel: document.getElementById('countLabel'),
-      size: document.getElementById('size'),
-      speed: document.getElementById('speed'),
-      gravity: document.getElementById('gravity'),
-      trail: document.getElementById('trail'),
-      colorMode: document.getElementById('colorMode'),
-      colorPick: document.getElementById('colorPick'),
-      shape: document.getElementById('shape'),
-      blend: document.getElementById('blend'),
-      attract: document.getElementById('attract'),
-      sparkle: document.getElementById('sparkle'),
-      autoburst: document.getElementById('autoburst'),
-      burst: document.getElementById('burst'),
-      randomize: document.getElementById('randomize'),
-      pause: document.getElementById('pause'),
-      save: document.getElementById('save'),
-      clear: document.getElementById('clear'),
-    };
-
-    function updateCountLabel(){
-      ui.countLabel.textContent = `${ui.count.value}`;
+  function tick(){
+    ctx.clearRect(0,0,cvs.width,DPR?cvs.height/DPR:cvs.height);
+    for(let i=particles.length-1;i>=0;i--){
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.02; // gravity
+      p.life--; p.alpha = Math.max(0, p.life/90);
+      ctx.globalAlpha = p.alpha; ctx.fillStyle = `hsl(${p.hue} 90% 60%)`;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+      if(p.life<=0) particles.splice(i,1);
     }
-    ui.count.addEventListener('input', updateCountLabel);
-    updateCountLabel();
-
-    // Particle system
-    const MAX_INIT = 4000;
-    const particles = [];
-
-    const state = {
-      paused: false,
-      hueBase: 200,
-      t: 0,
-      mouse: {x: w/2, y: h/2, down: false},
-      lastBurst: 0,
-    };
-
-    function rand(a=0, b=1){return a + Math.random()*(b-a)}
-    function fadeScreen(alpha){
-      ctx.save();
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = `rgba(11,15,22,${alpha})`;
-      ctx.fillRect(0,0,w,h);
-      ctx.restore();
-    }
-
-    class Particle{
-      constructor(x, y){
-        const spd = +ui.speed.value * DPR;
-        const ang = rand(0, Math.PI*2);
-        const v = rand(.2, 1) * spd;
-        this.x = x; this.y = y;
-        this.vx = Math.cos(ang)*v; this.vy = Math.sin(ang)*v;
-        this.life = rand(0.9, 1.4) * 2200; // ms
-        this.birth = performance.now();
-        this.size = rand(.6, 1.4) * +ui.size.value * DPR;
-        this.hue = (state.hueBase + rand(-40, 40) + 360) % 360;
-        this.alpha = 1;
-        this.spin = rand(-2,2);
-      }
-      update(dt){
-        this.vy += +ui.gravity.value * DPR * dt * 0.06;
-        const friction = 0.999;
-        this.vx *= friction; this.vy *= friction;
-        this.x += this.vx * dt * 0.06;
-        this.y += this.vy * dt * 0.06;
-
-        // mouse attract
-        if(ui.attract.checked){
-          const dx = state.mouse.x - this.x; const dy = state.mouse.y - this.y;
-          const d2 = dx*dx + dy*dy;
-          const f = Math.min(0.00003 * d2, 0.09);
-          this.vx += dx * f * 0.0003 * dt;
-          this.vy += dy * f * 0.0003 * dt;
-        }
-
-        const age = performance.now() - this.birth;
-        const lifeRatio = Math.max(0, 1 - age / this.life);
-        this.alpha = Math.pow(lifeRatio, 1.8);
-        if(ui.sparkle.checked){
-          this.alpha *= (0.8 + 0.2*Math.sin(age*0.02 + this.hue));
-        }
-        return lifeRatio > 0 && this.x>-50 && this.x<w+50 && this.y>-50 && this.y<h+50;
-      }
-      color(){
-        const m = ui.colorMode.value;
-        if(m==='mono') return hex2rgba(ui.colorPick.value, this.alpha);
-        if(m==='heat') return `hsla(${Math.max(0, Math.min(60, this.hue-140))}, 100%, 55%, ${this.alpha})`;
-        if(m==='icy') return `hsla(${210 + (this.hue%40)}, 100%, 70%, ${this.alpha})`;
-        return `hsla(${this.hue}, 100%, 65%, ${this.alpha})`;
-      }
-      draw(){
-        ctx.save();
-        ctx.fillStyle = this.color();
-        const s = this.size;
-        const x = this.x, y = this.y;
-        const shape = ui.shape.value;
-        if(shape==='circle'){
-          ctx.beginPath(); ctx.arc(x,y,s,0,Math.PI*2); ctx.fill();
-        } else if(shape==='triangle'){
-          ctx.beginPath();
-          const a = Math.atan2(this.vy, this.vx) + Math.PI/2;
-          const r = s*1.6;
-          for(let i=0;i<3;i++){
-            const th = a + i*2*Math.PI/3;
-            const px = x + Math.cos(th)*r;
-            const py = y + Math.sin(th)*r;
-            if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
-          }
-          ctx.closePath(); ctx.fill();
-        } else if(shape==='star'){
-          const spikes=5; const outer=s*2.0; const inner=s*0.9;
-          let rot = Math.atan2(this.vy,this.vx);
-          ctx.beginPath();
-          for(let i=0;i<spikes*2;i++){
-            const r = (i%2===0)?outer:inner;
-            const th = rot + (i*Math.PI/spikes);
-            const px = x + Math.cos(th)*r; const py = y + Math.sin(th)*r;
-            if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
-          }
-          ctx.closePath(); ctx.fill();
-        }
-        // soft glow
-        const g = ctx.createRadialGradient(x,y,0,x,y,s*3);
-        g.addColorStop(0, this.color());
-        g.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(x,y,s*3,0,Math.PI*2); ctx.fill();
-        ctx.restore();
-      }
-    }
-
-    function hex2rgba(hex, a=1){
-      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      if(!m) return `rgba(255,255,255,${a})`;
-      const r=parseInt(m[1],16), g=parseInt(m[2],16), b=parseInt(m[3],16);
-      return `rgba(${r},${g},${b},${a})`;
-    }
-
-    function burst(x, y, n){
-      const add = Math.min(n, MAX_INIT);
-      for(let i=0; i<add; i++) particles.push(new Particle(x,y));
-      // keep count in check
-      const target = +ui.count.value;
-      if(particles.length > target){ particles.splice(0, particles.length - target); }
-    }
-
-    // interactions
-    const pt = (e)=>{
-      if(e.touches && e.touches[0]) return {x: e.touches[0].clientX*DPR, y: e.touches[0].clientY*DPR};
-      return {x: e.clientX*DPR, y: e.clientY*DPR};
-    }
-    canvas.addEventListener('pointerdown', (e)=>{
-      state.mouse.down = true; const p = pt(e); state.mouse.x=p.x; state.mouse.y=p.y; burst(p.x,p.y, +ui.count.value/2);
-    });
-    canvas.addEventListener('pointermove', (e)=>{
-      const p = pt(e); state.mouse.x=p.x; state.mouse.y=p.y; if(state.mouse.down) burst(p.x,p.y, 30);
-    });
-    window.addEventListener('pointerup', ()=>{ state.mouse.down = false; });
-
-    // buttons
-    ui.burst.addEventListener('click', ()=> burst(rand(0,w), rand(0,h), +ui.count.value));
-    ui.randomize.addEventListener('click', ()=>{
-      ui.count.value = Math.floor(rand(300, 1800)); updateCountLabel();
-      ui.size.value = rand(1,5).toFixed(1);
-      ui.speed.value = rand(0.8,4.5).toFixed(1);
-      ui.gravity.value = rand(-0.05,0.25).toFixed(2);
-      ui.trail.value = rand(0.02,0.12).toFixed(3);
-      const modes=['rainbow','mono','heat','icy']; ui.colorMode.value = modes[Math.floor(rand(0,modes.length))];
-      ui.shape.value = ['circle','star','triangle'][Math.floor(rand(0,3))];
-      ui.blend.value = ['lighter','screen','normal'][Math.floor(rand(0,3))];
-      ui.sparkle.checked = Math.random()>0.3; ui.attract.checked = Math.random()>0.25;
-      ui.colorPick.value = `#${Math.floor(rand(0,0xFFFFFF)).toString(16).padStart(6,'0')}`;
-    });
-    ui.pause.addEventListener('click', ()=>{ state.paused = !state.paused; ui.pause.textContent = state.paused ? '再開' : '一時停止';});
-    ui.clear.addEventListener('click', ()=> fadeScreen(1));
-    ui.save.addEventListener('click', ()=>{
-      const url = canvas.toDataURL('image/png');
-      const a = document.createElement('a'); a.href=url; a.download = `sparkles_${Date.now()}.png`; a.click();
-    });
-
-    // main loop
-    let last = performance.now();
-    function tick(now){
-      const dt = Math.min(50, now - last); last = now; state.t += dt;
-
-      // background trail fade
-      const trail = +ui.trail.value;
-      ctx.save();
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = `rgba(11,15,22,${trail})`;
-      ctx.fillRect(0,0,w,h);
-      ctx.restore();
-
-      ctx.globalCompositeOperation = ui.blend.value;
-
-      // maintain target count
-      const target = +ui.count.value;
-      if(particles.length < target){
-        const cx = rand(0,w), cy = rand(0,h);
-        for(let i=0;i<Math.min(30, target - particles.length); i++) particles.push(new Particle(cx, cy));
-      }
-
-      // auto burst
-      if(ui.autoburst.checked && now - state.lastBurst > 800){
-        state.lastBurst = now;
-        burst(rand(w*0.2,w*0.8), rand(h*0.2,h*0.8), Math.floor(rand(20, 80)));
-      }
-
-      // update & draw
-      for(let i=particles.length-1; i>=0; i--){
-        const p = particles[i];
-        if(!state.paused && p.update(dt)){
-          p.draw();
-        }else if(!state.paused){
-          particles.splice(i,1);
-        }
-      }
-
-      // hue drift for rainbow
-      state.hueBase = (state.hueBase + 0.05*dt) % 360;
-      requestAnimationFrame(tick);
-    }
-
-    // seed
-    for(let i=0;i<600;i++) particles.push(new Particle(rand(0,w), rand(0,h)));
-    fadeScreen(1);
     requestAnimationFrame(tick);
-  })();
-  </script>
+  }
+  tick();
+
+  // Audio — pure WebAudio (no external files)
+  const audio = new (window.AudioContext || window.webkitAudioContext)();
+  function boom(){
+    const o = audio.createOscillator();
+    const g = audio.createGain();
+    const c = audio.createBiquadFilter();
+    c.type='lowpass'; c.frequency.value=600;
+    o.type='square';
+    o.frequency.setValueAtTime(180, audio.currentTime);
+    o.frequency.exponentialRampToValueAtTime(40, audio.currentTime + 0.15);
+    g.gain.setValueAtTime(0.0001, audio.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.8, audio.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.35);
+    o.connect(c).connect(g).connect(audio.destination);
+    o.start(); o.stop(audio.currentTime + 0.4);
+  }
+  function clickHi(){
+    const o = audio.createOscillator();
+    const g = audio.createGain();
+    o.type='triangle'; o.frequency.value=1200;
+    g.gain.value=0.15; o.connect(g).connect(audio.destination);
+    o.start(); o.stop(audio.currentTime + 0.05);
+  }
+
+  // Game state
+  const ROUNDS = 5;
+  let round = 0; let score = 0; let fastest = Infinity; let best = +(localStorage.getItem('shockreflex_best')||0);
+  updateBestBadge();
+
+  let waiting=false, readyTime=0, fired=false, practice=false, lock=false;
+
+  function updateBestBadge(){ bestBadge.textContent = `BEST: ${best?best+" ms":"-- ms"}`; }
+
+  function setPanel(html){ panel.innerHTML = html; }
+
+  function setShake(px=0, py=0){
+    stage.style.setProperty('--shakeX', px+'px');
+    stage.style.setProperty('--shakeY', py+'px');
+  }
+
+  function screenFlash(){
+    flash.style.transition = 'none'; flash.style.opacity = 0.85;
+    requestAnimationFrame(()=>{ flash.style.transition = 'opacity .20s ease-out'; flash.style.opacity = 0; });
+  }
+
+  function startGame(prac=false){
+    practice = prac; round = 0; score = 0; fastest = Infinity; fired=false; waiting=false; lock=false;
+    scoreEl.textContent = '0'; roundEl.textContent = `0 / ${practice?"∞":ROUNDS}`; fastestEl.textContent = '-- ms';
+    meterBar.style.width = '0%';
+    nextRound();
+  }
+
+  function nextRound(){
+    if(!practice && round>=ROUNDS){ return finishGame(); }
+    round++;
+    roundEl.textContent = `${practice?round:"" + round} / ${practice?"∞":ROUNDS}`;
+    setPanel(`<h2 class="title">静かに待て…</h2><p class="subtitle">ランダムタイミングで合図が出ます。早押しは<strong>フライング</strong>。</p><p class="big" id="count">…</p>`);
+    meterBar.style.width = '0%';
+
+    const delay = 1200 + Math.random()*2000; // 1.2s–3.2s
+    waiting = true; fired=false; lock=false;
+    setShake(0,0);
+
+    const startAt = performance.now();
+
+    const t1 = setTimeout(()=>{
+      waiting = false; readyTime = performance.now();
+      setPanel(`<p class="subtitle">今だ！</p><p class="big" id="now">NOW<span class="unit">!</span></p>`);
+      boom(); screenFlash();
+
+      // FX
+      const rect = stage.getBoundingClientRect();
+      spawnShockwave(rect.width/2, rect.height/2, 1.2);
+
+      // gentle shake
+      let k=14, d=0;
+      const sh = () => { if(d>18){ setShake(0,0); return; } d++; setShake((Math.random()*2-1)*k,(Math.random()*2-1)*k); k*=0.75; requestAnimationFrame(sh); };
+      sh();
+    }, delay);
+
+    // Update meter while waiting
+    const meterStart = performance.now();
+    function meterTick(){
+      if(!waiting) return;
+      const p = Math.min(1, (performance.now()-meterStart)/delay);
+      meterBar.style.width = (p*100).toFixed(1)+'%';
+      requestAnimationFrame(meterTick);
+    }
+    meterTick();
+  }
+
+  function handlePress(){
+    if(lock) return; // prevent double taps
+    lock=true; setTimeout(()=>lock=false, 60);
+    clickHi();
+
+    if(waiting){ // false start
+      fired=true; waiting=false;
+      setPanel(`<h2 class="title">フライング！</h2><p class="subtitle">合図の前に押しました。</p><p class="big">+200 <span class="unit">ms</span></p><div class="controls"><button class="danger" id="cont">続ける</button></div>`);
+      score -= 200; if(score<0) score=0; scoreEl.textContent=score;
+      document.getElementById('cont').onclick = nextRound;
+      setShake(10,-10); screenFlash();
+      return;
+    }
+
+    if(!fired && !waiting && readyTime>0){
+      const rt = Math.max(0, Math.round(performance.now()-readyTime));
+      fastest = Math.min(fastest, rt); fastestEl.textContent = fastest + ' ms';
+      const gain = Math.max(0, 1000 - rt);
+      score += gain; scoreEl.textContent = score;
+      setPanel(`<h2 class="title">反応速度</h2><p class="big">${rt} <span class="unit">ms</span></p><p class="subtitle">スコア +${gain}</p><div class="controls"><button class="primary" id="next">次へ</button> <button id="retry">やり直す</button></div>`);
+      document.getElementById('next').onclick = nextRound;
+      document.getElementById('retry').onclick = ()=>startGame(practice);
+
+      // FX
+      const rect = stage.getBoundingClientRect();
+      spawnShockwave(rect.width/2, rect.height/2, 0.8 + Math.max(0,1.4-rt/500));
+      screenFlash();
+      fired=true;
+    }
+  }
+
+  function finishGame(){
+    setPanel(`<h2 class="title">結果</h2>
+      <div class="row" style="margin:10px 0 18px">
+        <div class="stat"><div class="label">総スコア</div><div class="val">${score}</div></div>
+        <div class="stat"><div class="label">最速</div><div class="val">${fastest===Infinity?'--':fastest+' ms'}</div></div>
+      </div>
+      <div class="controls"><button class="primary" id="again">もう一度</button></div>`);
+    if(fastest < (best||Infinity)) { best = fastest; localStorage.setItem('shockreflex_best', String(best)); updateBestBadge(); }
+    document.getElementById('again').onclick = ()=>startGame(false);
+  }
+
+  // Inputs
+  function onKey(e){ if(e.code==='Space' || e.key===' '){ e.preventDefault(); handlePress(); } }
+  function onClick(){ handlePress(); }
+  addEventListener('keydown', onKey);
+  stage.addEventListener('pointerdown', onClick);
+
+  // Initial buttons
+  startBtn.addEventListener('click', ()=>startGame(false));
+  practiceBtn.addEventListener('click', ()=>startGame(true));
+
+  // Update header best on load
+  updateBestBadge();
+})();
+</script>
 </body>
 </html>
-
